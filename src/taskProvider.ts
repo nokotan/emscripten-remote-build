@@ -11,7 +11,7 @@ interface EmscriptenBuildTaskDefinition extends vscode.TaskDefinition {
   }
 
 export class CustomBuildTaskProvider implements vscode.TaskProvider {
-	static CustomBuildScriptType = 'custombuildscript';
+	static CustomBuildScriptType = 'emcc';
 	private tasks: vscode.Task[] | undefined;
 
 	// We use a CustomExecution task when state needs to be shared across runs of the task or when 
@@ -109,7 +109,9 @@ class CustomBuildTaskTerminal implements vscode.Pseudoterminal {
 
         const files = await Promise.all(filePromises);
 
-        Service.compileFiles(files, Language.Cpp, Language.Wasm, this.flags.join(" "));
+        const outputs = await Service.compileFiles(files, Language.Cpp, Language.Wasm, this.flags.join(" "));
+
+		await vscode.workspace.fs.writeFile(vscode.Uri.file(`${this.workspaceRoot}/main.wasm`), new Uint8Array(outputs["a.wasm"] as ArrayBuffer));
 			
 		this.writeEmitter.fire('Finish.\r\n');
 	}
