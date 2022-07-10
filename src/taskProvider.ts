@@ -4,11 +4,21 @@ import { File, FileType } from './wasm-studio/models';
 import { Language, Service } from './wasm-studio/service';
 
 interface EmscriptenBuildTaskDefinition extends vscode.TaskDefinition {
+	/**
+     * Files to build
+     */
+	files?: string[];
+
     /**
-     * The task name
+     * Compiler Flags
      */
     flags: string[];
-  }
+
+	/**
+     * Output file name
+     */
+	outputName?: string;
+}
 
 export class CustomBuildTaskProvider implements vscode.TaskProvider {
 	static CustomBuildScriptType = 'emcc';
@@ -29,38 +39,27 @@ export class CustomBuildTaskProvider implements vscode.TaskProvider {
 
 	public resolveTask(_task: vscode.Task): vscode.Task | undefined {
 		const definition: EmscriptenBuildTaskDefinition = <any>_task.definition;
-		return this.getTask(definition.flavor, definition.flags ? definition.flags : [], definition);
+		return this.getTask(definition);
 	}
 
 	private getTasks(): vscode.Task[] {
 		if (this.tasks !== undefined) {
 			return this.tasks;
 		}
-		// In our fictional build, we have two build flavors
-		const flavors: string[] = ['32', '64'];
-		// Each flavor can have some options.
-		const flags: string[][] = [['watch', 'incremental'], ['incremental'], []];
-
-		this.tasks = [];
-		flavors.forEach(flavor => {
-			flags.forEach(flagGroup => {
-				this.tasks!.push(this.getTask(flavor, flagGroup));
-			});
-		});
+		this.tasks = [ this.getTask() ];
 		return this.tasks;
 	}
 
-	private getTask(flavor: string, flags: string[], definition?: EmscriptenBuildTaskDefinition): vscode.Task {
-		if (definition === undefined) {
-			definition = {
-                type: "emcc",
-				flags: []
-			};
-		}
-		return new vscode.Task(definition, vscode.TaskScope.Workspace, `${flavor} ${flags.join(' ')}`,
+	private getTask(definition?: EmscriptenBuildTaskDefinition): vscode.Task {
+		let redifined = definition || {
+			type: "emcc",
+			flags: []
+		};
+		
+		return new vscode.Task(redifined, vscode.TaskScope.Workspace, "emcc build",
 			CustomBuildTaskProvider.CustomBuildScriptType, new vscode.CustomExecution(async (): Promise<vscode.Pseudoterminal> => {
 				// When the task is executed, this callback will run. Here, we setup for running the task.
-				return new CustomBuildTaskTerminal(this.workspaceRoot, flavor, flags, () => this.sharedState, (state: string) => this.sharedState = state);
+				return new CustomBuildTaskTerminal(this.workspaceRoot, redifined, () => this.sharedState, (state: string) => this.sharedState = state);
 			}));
 	}
 }
@@ -71,33 +70,28 @@ class CustomBuildTaskTerminal implements vscode.Pseudoterminal {
 	private closeEmitter = new vscode.EventEmitter<number>();
 	onDidClose?: vscode.Event<number> = this.closeEmitter.event;
 
-	private fileWatcher: vscode.FileSystemWatcher | undefined;
-
-	constructor(private workspaceRoot: string, private flavor: string, private flags: string[], private getSharedState: () => string | undefined, private setSharedState: (state: string) => void) {
+	constructor(private workspaceRoot: string, private definition: EmscriptenBuildTaskDefinition, private getSharedState: () => string | undefined, private setSharedState: (state: string) => void) {
 	}
 
 	open(initialDimensions: vscode.TerminalDimensions | undefined): void {
-		// At this point we can start using the terminal.
-		if (this.flags.indexOf('watch') > -1) {
-			const pattern = path.join(this.workspaceRoot, 'customBuildFile');
-			this.fileWatcher = vscode.workspace.createFileSystemWatcher(pattern);
-			this.fileWatcher.onDidChange(() => this.doBuild());
-			this.fileWatcher.onDidCreate(() => this.doBuild());
-			this.fileWatcher.onDidDelete(() => this.doBuild());
-		}
 		this.doBuild();
 	}
 
 	close(): void {
-		// The terminal has been closed. Shutdown the build.
-		if (this.fileWatcher) {
-			this.fileWatcher.dispose();
-		}
+
 	}
 
 	private async doBuild(): Promise<void> {
 		this.writeEmitter.fire('Starting build...\r\n');
-        const fileURLs = await vscode.workspace.findFiles("**/*.cpp");
+
+		if (!this.definition.files) {
+			this.definition.files = [ "**/*.cpp" ]
+		}
+
+		const fileURLsPromise = this.definition.files.map(async filePattern => {
+			return await vscode.workspace.findFiles(filePattern);
+		});
+        const fileURLs = (await Promise.all(fileURLsPromise)).flat();
 
         const filePromises = fileURLs.map(async url => {
             const content = await vscode.workspace.fs.readFile(url);
@@ -109,10 +103,13 @@ class CustomBuildTaskTerminal implements vscode.Pseudoterminal {
 
         const files = await Promise.all(filePromises);
 
-        const outputs = await Service.compileFiles(files, Language.Cpp, Language.Wasm, this.flags.join(" "));
+        const outputs = await Service.compileFiles(files, Language.Cpp, Language.Wasm, this.definition.flags.join(" "));
 
-		await vscode.workspace.fs.writeFile(vscode.Uri.file(`${this.workspaceRoot}/main.wasm`), new Uint8Array(outputs["a.wasm"] as ArrayBuffer));
+		const outputFileName = this.definition.outputName || "main.wasm"; 
+		const outputFile = vscode.Uri.file(`${this.workspaceRoot}/${outputFileName}`); 
+		await vscode.workspace.fs.writeFile(outputFile, new Uint8Array(outputs["a.wasm"] as ArrayBuffer));
 			
 		this.writeEmitter.fire('Finish.\r\n');
+		this.closeEmitter.fire(0);
 	}
 }

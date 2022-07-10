@@ -19,9 +19,17 @@
       {
         "type": "emcc",
         "properties": {
+          "files": {
+            "type": "array",
+            "description": "files to build"
+          },
           "flags": {
             "type": "array",
             "description": "compiler flags"
+          },
+          "outputName": {
+            "type": "string",
+            "description": "output file name"
           }
         }
       }
