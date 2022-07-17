@@ -53,8 +53,14 @@ export interface ILoadFiddleResponse {
 
 export { Language } from "./compilerServices";
 
+export interface CompileResult {
+  success: boolean;
+  files: { [name: string]: (string|ArrayBuffer) };
+  console: string;
+}
+
 export class Service {
-  static async compileFiles(files: File[], from: Language, to: Language, options = ""): Promise<{ [name: string]: (string|ArrayBuffer); }> {
+  static async compileFiles(files: File[], from: Language, to: Language, options = ""): Promise<CompileResult> {
     const service = await createCompilerService(from, to);
 
     const fileNameMap: {[name: string]: File} = files.reduce((acc: any, f: File) => {
@@ -72,6 +78,7 @@ export class Service {
       options,
     };
     const result = await service.compile(input);
+    let consoleWritten = "";
 
     for (const [ name, item ] of Object.entries(result.items)) {
       const { fileRef, console } = item;
@@ -82,10 +89,15 @@ export class Service {
       if (!file) {
         continue;
       }
+      consoleWritten += console;
     }
 
     if (!result.success) {
-      throw new Error(result.console);
+      return {
+        success: false,
+        files: {},
+        console: consoleWritten + result.console
+      }
     }
 
     const outputFiles: any = {};
@@ -95,7 +107,11 @@ export class Service {
         outputFiles[name] = content;
       }
     }
-    return outputFiles;
+    return {
+      success: true,
+      files: outputFiles,
+      console: consoleWritten
+    };
   }
 
   static async compileFile(file: File, from: Language, to: Language, options = ""): Promise<any> {
@@ -107,7 +123,7 @@ export class Service {
     if (to !== Language.Wasm) {
       throw new Error(`Only wasm target is supported, but "${to}" was found`);
     }
-    const result = await Service.compileFiles([file], from, to, options);
+    const result = (await Service.compileFiles([file], from, to, options)).files;
     const expectedOutputFilename = "a.wasm";
     let output: any = {
       wasm: result[expectedOutputFilename],
