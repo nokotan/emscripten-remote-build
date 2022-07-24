@@ -1,6 +1,7 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import { showPreview } from './previewProvider';
 import { CustomBuildTaskProvider } from './taskProvider';
 
 // this method is called when your extension is activated
@@ -20,6 +21,14 @@ export function activate(context: vscode.ExtensionContext) {
 	const disposable = vscode.tasks.registerTaskProvider("emcc", new CustomBuildTaskProvider(workspaceRoot));
 
 	context.subscriptions.push(disposable);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand("emcc.preview.show", (selectedFile) => {
+			if (selectedFile instanceof vscode.Uri) {
+				showPreview(workspaceRoot, selectedFile);
+			}
+		})
+	);
 }
 
 // this method is called when your extension is deactivated

@@ -19,7 +19,21 @@
  * SOFTWARE.
  */
 import getConfig from "../config";
-import fetch, { Response } from "node-fetch";
+import { Response as NodeResponse } from "node-fetch";
+
+type CommonResponse = NodeResponse | Response;
+
+let commonFetch: (input: string, init?: any) => Promise<CommonResponse>;
+
+async function resolveFetch() {
+  if (typeof process === "object") {
+    commonFetch = (await import("node-fetch")).default;
+  } else {
+    commonFetch = fetch;
+  }
+}
+
+void resolveFetch();
 
 export enum ServiceTypes {
   Rustc,
@@ -63,7 +77,7 @@ export async function getServiceURL(to: ServiceTypes): Promise<string> {
   }
 }
 
-export async function parseJSONResponse(response: Response): Promise < IServiceRequest > {
+export async function parseJSONResponse(response: CommonResponse): Promise < IServiceRequest > {
   const text = await response.text();
   if (response.status === 200) {
     try {
@@ -78,7 +92,7 @@ export async function parseJSONResponse(response: Response): Promise < IServiceR
 
 export async function sendRequestJSON(content: Object, to: ServiceTypes): Promise < IServiceRequest > {
   const url = await getServiceURL(to);
-  const response = await fetch(url, {
+  const response = await commonFetch(url, {
     method: "POST",
     body: JSON.stringify(content),
     // headers: new Headers({ "Content-Type": "application/json" })
@@ -89,7 +103,7 @@ export async function sendRequestJSON(content: Object, to: ServiceTypes): Promis
 
 export async function sendRequest(content: string, to: ServiceTypes): Promise < IServiceRequest > {
   const url = await getServiceURL(to);
-  const response = await fetch(url, {
+  const response = await commonFetch(url, {
     method: "POST",
     body: content,
     // headers: new Headers({ "Content-Type": "application/x-www-form-urlencoded" })

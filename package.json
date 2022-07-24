@@ -11,10 +11,28 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:workbench.action.tasks.runTask"
+    "onCommand:workbench.action.tasks.runTask",
+    "onCommand:emcc.preview.show"
   ],
   "main": "./dist/extension.js",
+  "browser": "./dist/extension.js",
   "contributes": {
+    "commands": [
+      {
+        "command": "emcc.preview.show",
+        "title": "Run HTML",
+        "category": "emcc"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "emcc.preview.show",
+          "when": "resourceLangId == html",
+          "group": "z_commands"
+        }
+      ]
+    },
     "taskDefinitions": [
       {
         "type": "emcc",
